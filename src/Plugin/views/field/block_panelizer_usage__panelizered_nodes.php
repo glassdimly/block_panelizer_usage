@@ -6,9 +6,13 @@ use Drupal\Core\Form\FormStateInterface;
 use Drupal\views\Plugin\views\field\FieldPluginBase;
 use Drupal\views\ResultRow;
 use Drupal\Core\Link;
+use Drupal\views\Plugin\views\display\DisplayPluginBase;
+use Drupal\views\ViewExecutable;
 
 /**
- * A handler to provide a field that is completely custom by the administrator.
+ * A handler to provide a custom field to be used in listing of custom blocks.
+ * This field creates a report of the specific node content on which a block
+ * appears.
  *
  * @ingroup views_field_handlers
  *
@@ -24,6 +28,15 @@ class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
     parent::__construct($configuration, $plugin_id, $plugin_definition);
     $this->panelizer = \Drupal::service('panelizer');
     $this->panelizered_nids = $this->getPanelizeredNidsByBlockUuid();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function init(ViewExecutable $view, DisplayPluginBase $display, array &$options = NULL) {
+    parent::init($view, $display, $options);
+    // Set cache tags for this view. See @block_panelizer_usage_entity_presave().
+    $view->element['#cache']['tags'][] = BLOCK_PANELIZER_USAGE_CACHE_TAG_PANELIZERED_NODES;
   }
 
   /**
@@ -46,6 +59,7 @@ class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
   protected function defineOptions() {
     $options = parent::defineOptions();
     $options['hide_alter_empty'] = ['default' => FALSE];
+
     return $options;
   }
 
@@ -68,25 +82,33 @@ class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
         $link_render = Link::createFromRoute($title, 'entity.node.canonical', ['node' => $nid])->toRenderable();
         $report_links[] = render($link_render);
       }
+
       return ['#markup' => implode(', ', $report_links)];
     }
+
     return '';
   }
 
+  /**
+   * Gets an array of all node ids keyed by block uuid.
+   *    @TODO Scale this. Probably works for sites with less than 10K panelized nodes.
+   *
+   * @return array node ids keyed by block uuid.
+   */
   public function getPanelizeredNidsByBlockUuid() {
     $query = \Drupal::database()->query(
       'SELECT entity_id, panelizer_panels_display, title
-    FROM node__panelizer
-    INNER JOIN node_field_data 
-    ON node_field_data.nid = node__panelizer.entity_id
-    WHERE node__panelizer.deleted = :deleted',
+        FROM node__panelizer
+        INNER JOIN node_field_data 
+        ON node_field_data.nid = node__panelizer.entity_id
+        WHERE node__panelizer.deleted = :deleted',
       [':deleted' => 0]
     );
 
     $panelizer_node_configs = $query->fetchAll();
 
+    // Loop through panelizered node configurations and get their blocks.
     $panelizered_nodes_by_block_uuid = [];
-
     foreach ($panelizer_node_configs as $panelizer_node_config) {
       $config = unserialize($panelizer_node_config->panelizer_panels_display);
       $nid = $panelizer_node_config->entity_id;
@@ -96,6 +118,7 @@ class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
         continue;
       }
 
+      // Loop through blocks to build block-uuid-keyed array of nids.
       foreach ($config['blocks'] as $panelizer_uuid => $block) {
         list($module, $block_uuid) = explode(':', $block['id']);
         if (!isset($panelizered_nodes_by_block_uuid[$block_uuid][$nid])) {

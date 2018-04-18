@@ -8,9 +8,14 @@ use Drupal\views\ResultRow;
 use Drupal\Core\Entity\Display\EntityViewDisplayInterface;
 use Drupal\Core\Entity\Entity\EntityViewDisplay;
 use Drupal\Core\Link;
+use Drupal\views\Plugin\views\display\DisplayPluginBase;
+use Drupal\views\ViewExecutable;
 
 /**
- * A handler to provide a field that is completely custom by the administrator.
+ * A handler to provide a custom field to be used in listing of custom blocks.
+ * This field creates a report of the panelizer view modes on which a block
+ * appears.
+ *
  *
  * @ingroup views_field_handlers
  *
@@ -18,19 +23,28 @@ use Drupal\Core\Link;
  */
 class block_panelizer_usage__default_view_modes extends FieldPluginBase {
 
-  public $block_panelizer_usage_displays;
-  public $bundle_info;
+  public $panelizered_displays_by_block = [];
+  private $bundle_info;
 
   /**
    * {@inheritdoc}
    */
   public function __construct(array $configuration, $plugin_id, $plugin_definition) {
     parent::__construct($configuration, $plugin_id, $plugin_definition);
-    $this->entityManager = \Drupal::entityManager();
+    $this->entityManager = \Drupal::service('entity.manager');
     $this->panelizer = \Drupal::service('panelizer');
     $this->configFactory = \Drupal::service('config.factory');
-    $this->block_panelizer_usage_displays = $this->getPanelizeredDisplays();
     $this->bundle_info = $this->entityManager->getAllBundleInfo();
+    $this->buildPanelizeredDisplaysByBlock();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function init(ViewExecutable $view, DisplayPluginBase $display, array &$options = NULL) {
+    parent::init($view, $display, $options);
+    // Set cache tags for this view. See @block_panelizer_usage_entity_presave().
+    $view->element['#cache']['tags'][] = BLOCK_PANELIZER_USAGE_CACHE_TAG_VIEW_MODES;
   }
 
   /**
@@ -69,38 +83,23 @@ class block_panelizer_usage__default_view_modes extends FieldPluginBase {
    */
   public function render(ResultRow $values) {
     $plugin_uuid = $values->_entity->get('uuid')->getString();
-    $report = [];
-    foreach ($this->block_panelizer_usage_displays as $panelizered_display) {
-      $config = $panelizered_display->getConfiguration();
-      if (!empty($config['blocks'])) {
-        foreach ($config['blocks'] as $panel_uuid => $block) {
-          $block_uuid_array = explode(':', $block['id']);
-          $this_block_uuid = end($block_uuid_array);
-          if ($this_block_uuid == $plugin_uuid) {
-            list($entity_type, $bundle, $view_mode) = explode(':', $config['storage_id']);
-            $bundle_info = $this->bundle_info;
-            $route_machine_name = str_replace(':', '__', $config['storage_id']);
-            $link_render = Link::createFromRoute(
-              $bundle_info[$entity_type][$bundle]['label'],
-              'panelizer.wizard.edit',
-              ['machine_name' => $route_machine_name,
-                'step' => 'content']
-            )->toRenderable();
-            $report[] = render($link_render);
-          }
-        }
-      }
-    }
-    if (!empty($report)) {
-      return ['#markup' => implode(', ', $report)];
+
+    if (!empty($this->panelizered_displays_by_block[$plugin_uuid])) {
+      return ['#markup' => implode(', ', $this->panelizered_displays_by_block[$plugin_uuid])];
     }
   }
 
-  public function getPanelizeredDisplays() {
-    // Loop through node types and get their enabled display modes that are panelizered.
-    $panel_displays = [];
+  /**
+   * Load all node bundles, see which are panelizered, and build an array of
+   * links by block uuid for the report.
+   *
+   * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
+   */
+  public function buildPanelizeredDisplaysByBlock() {
 
+    // Loop through node types and get the enabled display modes that are panelizered.
     foreach ($this->entityManager->getStorage('node_type')->loadMultiple() as $node_type) {
+
       $values = [
         'targetEntityType' => 'node',
         'bundle' => $node_type->toArray()['type'],
@@ -108,24 +107,80 @@ class block_panelizer_usage__default_view_modes extends FieldPluginBase {
       ];
       $entity_view_display = EntityViewDisplay::create($values);
 
-      // Loop through the enabled view modes.
+      // Loop through the enabled view modes, build index by block.
       foreach ($this->getEntityDisplays($entity_view_display) as $id => $view_display_mode) {
         list($entity_type, $bundle, $view_mode) = explode('.', $view_display_mode->id());
+
         // Only load displays that have been panelizered.
         if ($panel_display_array = $this->panelizer->getDefaultPanelsDisplays($entity_type, $bundle, $view_mode)) {
-          $panel_displays[] = array_values($panel_display_array)[0];
+
+          $panelizered_display = array_values($panel_display_array)[0];
+          if (!isset(array_values($panel_display_array)[0])) {
+            continue;
+          }
+
+          $config = $panelizered_display->getConfiguration();
+          if (empty($config['blocks'])) {
+            continue;
+          }
+
+          foreach ($config['blocks'] as $block) {
+            $this->addBlockLinkToPanelizeredDisplaysByBlock($config, $block, $view_display_mode->getMode());
+          }
         }
       }
     }
-    return $panel_displays;
   }
 
-  public function getEntityDisplays(EntityViewDisplayInterface $entity) {
+  /**
+   * Add a link for a block to the report array, indexed by block uuid.
+   *
+   * @param  array $config A configuration array from
+   *    \Drupal\Core\Entity\Display\EntityDisplayInterface->getConfiguration()
+   * @param array $block A block array from
+   *    \Drupal\Core\Entity\Display\EntityDisplayInterface->getConfiguration()['blocks'][]
+   * @param string $view_mode A view mode string from
+   *    \Drupal\Core\Entity\Display\EntityDisplayInterface->getMode()
+   */
+  protected function addBlockLinkToPanelizeredDisplaysByBlock($config, $block, $view_mode) {
+
+    list($entity_type, $bundle, ,) = explode(':', $config['storage_id']);
+    $bundle_info = $this->bundle_info;
+
+    $route_machine_name = str_replace(':', '__', $config['storage_id']);
+
+    // Create the render array for the link.
+    $link_render = Link::createFromRoute(
+    "{$bundle_info[$entity_type][$bundle]['label']}: {$view_mode}",
+      'panelizer.wizard.edit',
+      ['machine_name' => $route_machine_name,
+        'step' => 'content']
+    )->toRenderable();
+    $link_html = render($link_render);
+
+    // Get the block uuid to serve as index.
+    $block_uuid_array = explode(':', $block['id']);
+    $block_uuid = end($block_uuid_array);
+
+    // Add link by block uuid to the class variable.
+    $this->panelizered_displays_by_block[$block_uuid][] = $link_html;
+  }
+
+  /**
+   * Load all the entity displays for a entity bundle.
+   *
+   * @param \Drupal\Core\Entity\Display\EntityViewDisplayInterface $entity
+   *
+   * @return \Drupal\Core\Entity\Display\EntityDisplayInterface[]
+   *   An array holding entity displays or entity form displays.
+   */
+  protected function getEntityDisplays(EntityViewDisplayInterface $entity) {
     $load_ids = [];
     $display_entity_type = $entity->getEntityTypeId();
     $entity_type = $this->entityManager->getDefinition($display_entity_type);
     $config_prefix = $entity_type->getConfigPrefix();
     $ids = $this->configFactory->listAll($config_prefix . '.' . $entity->getTargetEntityTypeId() . '.' . $entity->getTargetBundle() . '.');
+
     foreach ($ids as $id) {
       $config_id = str_replace($config_prefix . '.', '', $id);
       list(,, $display_mode) = explode('.', $config_id);
@@ -133,6 +188,7 @@ class block_panelizer_usage__default_view_modes extends FieldPluginBase {
         $load_ids[] = $config_id;
       }
     }
+
     return $this->entityManager->getStorage($display_entity_type)->loadMultiple($load_ids);
   }
 
