@@ -41,15 +41,6 @@ class block_panelizer_usage__default_view_modes extends FieldPluginBase {
   /**
    * {@inheritdoc}
    */
-  public function init(ViewExecutable $view, DisplayPluginBase $display, array &$options = NULL) {
-    parent::init($view, $display, $options);
-    // Set cache tags for this view. See @block_panelizer_usage_entity_presave().
-    $view->element['#cache']['tags'][] = BLOCK_PANELIZER_USAGE_CACHE_TAG_VIEW_MODES;
-  }
-
-  /**
-   * {@inheritdoc}
-   */
   public function usesGroupBy() {
     return FALSE;
   }
@@ -84,9 +75,15 @@ class block_panelizer_usage__default_view_modes extends FieldPluginBase {
   public function render(ResultRow $values) {
     $plugin_uuid = $values->_entity->get('uuid')->getString();
 
+    $report = '';
     if (!empty($this->panelizered_displays_by_block[$plugin_uuid])) {
-      return ['#markup' => implode(', ', $this->panelizered_displays_by_block[$plugin_uuid])];
+      $report = implode(', ', $this->panelizered_displays_by_block[$plugin_uuid]);
     }
+
+    return [
+      '#markup' => $report,
+      '#cache' => ['tags' => [BLOCK_PANELIZER_USAGE_CACHE_TAG_VIEW_MODES]]
+    ];
   }
 
   /**

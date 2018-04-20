@@ -35,8 +35,6 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
    */
   public function init(ViewExecutable $view, DisplayPluginBase $display, array &$options = NULL) {
     parent::init($view, $display, $options);
-    // Set cache tags for this view. See @block_panelizer_usage_entity_presave().
-    $view->element['#cache']['tags'][] = BLOCK_PANELIZER_USAGE_CACHE_TAG_BLOCK_REGIONS;
     $this->regions = system_region_list($this->options['theme_report']);
   }
 
@@ -92,7 +90,6 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
     $plugin_uuid = $values->_entity->get('uuid')->getString();
 
     // Prepare the report for blocks that match the current block.
-    $report = [];
     foreach ($this->getEnabledBlocks() as $block) {
       $this_plugin_uuid_array = explode(':', $block->getPlugin()->pluginId);
       $this_plugin_uuid = end($this_plugin_uuid_array);
@@ -103,9 +100,12 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
       }
     }
 
-    if (!empty($report)) {
-      return ['#markup' => implode(', ', $report)];
-    }
+    $report = (!empty($report)) ? implode(', ', $report) : '';
+
+    return [
+      '#markup' => $report,
+      '#cache' => ['tags' => array_merge($values->_entity->getCacheTags(), $block->getCacheTags())]
+    ];
   }
 
   /**

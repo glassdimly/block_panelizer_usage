@@ -33,15 +33,6 @@ class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
   /**
    * {@inheritdoc}
    */
-  public function init(ViewExecutable $view, DisplayPluginBase $display, array &$options = NULL) {
-    parent::init($view, $display, $options);
-    // Set cache tags for this view. See @block_panelizer_usage_entity_presave().
-    $view->element['#cache']['tags'][] = BLOCK_PANELIZER_USAGE_CACHE_TAG_PANELIZERED_NODES;
-  }
-
-  /**
-   * {@inheritdoc}
-   */
   public function usesGroupBy() {
     return FALSE;
   }
@@ -76,6 +67,7 @@ class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
   public function render(ResultRow $values) {
     $plugin_uuid = $values->_entity->get('uuid')->getString();
 
+    $report = '';
     if (!empty($this->panelizered_nids[$plugin_uuid])) {
       $report_links = [];
       foreach ($this->panelizered_nids[$plugin_uuid] as $nid => $title) {
@@ -83,10 +75,13 @@ class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
         $report_links[] = render($link_render);
       }
 
-      return ['#markup' => implode(', ', $report_links)];
+      $report = implode(', ', $report_links);
     }
 
-    return '';
+    return [
+      '#markup' => $report,
+      '#cache' => ['tags' => [BLOCK_PANELIZER_USAGE_CACHE_TAG_PANELIZERED_NODES]]
+    ];
   }
 
   /**
