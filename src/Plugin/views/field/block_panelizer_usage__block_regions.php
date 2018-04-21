@@ -118,7 +118,9 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
       '#cache' => [
         'tags' => array_merge(
           $values->_entity->getCacheTags(),
-          $block->getCacheTags()
+          $block->getCacheTags(),
+          [BLOCK_PANELIZER_USAGE_CACHE_TAG_BLOCK_REGIONS],
+          [BLOCK_PANELIZER_USAGE_CACHE_TAG_BLOCK_REGIONS . ':' . $block->getPluginId()]
         )
       ]
     ];
