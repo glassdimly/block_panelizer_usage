@@ -19,7 +19,12 @@ use Drupal\views\ViewExecutable;
  */
 class block_panelizer_usage__block_regions extends FieldPluginBase {
 
+  public $entityManager;
+  public $theme_manager;
+  public $theme_handler;
+  public $renderer;
   public $regions;
+
   /**
    * {@inheritdoc}
    */
@@ -28,6 +33,7 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
     $this->entityManager = \Drupal::service('entity.manager');
     $this->theme_manager = \Drupal::service('theme.manager');
     $this->theme_handler = \Drupal::service('theme_handler');
+    $this->renderer = \Drupal::service('renderer');
   }
 
   /**
@@ -35,8 +41,6 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
    */
   public function init(ViewExecutable $view, DisplayPluginBase $display, array &$options = NULL) {
     parent::init($view, $display, $options);
-    // Set cache tags for this view. See @block_panelizer_usage_entity_presave().
-    $view->element['#cache']['tags'][] = BLOCK_PANELIZER_USAGE_CACHE_TAG_BLOCK_REGIONS;
     $this->regions = system_region_list($this->options['theme_report']);
   }
 
@@ -60,6 +64,7 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
   protected function defineOptions() {
     $options = parent::defineOptions();
     $options['theme_report'] = ['default' => ''];
+    $options['display_as_link'] = TRUE;
 
     return $options;
   }
@@ -83,6 +88,13 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
       '#default_value' => $this->options['theme_report'],
       '#options' => ['' => ''] + $theme_checkboxes
     ];
+
+    $form['display_as_link'] = [
+      '#type' => 'checkbox',
+      '#title' => t('Link to the Block layout page.'),
+      '#weight' => -31,
+      '#default_value' => $this->options['display_as_link'],
+    ];
   }
 
   /**
@@ -92,20 +104,49 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
     $plugin_uuid = $values->_entity->get('uuid')->getString();
 
     // Prepare the report for blocks that match the current block.
-    $report = [];
     foreach ($this->getEnabledBlocks() as $block) {
       $this_plugin_uuid_array = explode(':', $block->getPlugin()->pluginId);
       $this_plugin_uuid = end($this_plugin_uuid_array);
       if ($plugin_uuid == $this_plugin_uuid) {
         $region_name = $this->regions[$block->getRegion()]->__toString();
-        $link_render = Link::createFromRoute($region_name, 'block.admin_display_theme', ['theme' => $this->options['theme_report']])->toRenderable();
-        $report[] = render($link_render);
+        if ($this->options['display_as_link']) {
+          $link_render = Link::createFromRoute($region_name, 'block.admin_display_theme', ['theme' => $this->options['theme_report']])->toRenderable();
+          $report[] = $this->renderer->renderPlain($link_render);
+        }
+        else {
+          $report[] = $region_name;
+        }
       }
     }
 
+    // Cache by block ID and config ID.
+    $cache = [
+      '#cache' => [
+        'tags' => array_merge(
+          $values->_entity->getCacheTags(),
+          $block->getCacheTags(),
+          [BLOCK_PANELIZER_USAGE_CACHE_TAG_BLOCK_REGIONS],
+          [BLOCK_PANELIZER_USAGE_CACHE_TAG_BLOCK_REGIONS . ':' . $block->getPluginId()]
+        )
+      ]
+    ];
+
     if (!empty($report)) {
-      return ['#markup' => implode(', ', $report)];
+      $render_array = [
+        '#theme' => 'item_list',
+        '#items' => $report,
+      ];
     }
+
+    else {
+      // This is so field is properly hidden if empty. [] in item_list did not.
+      // Empty markup must be returned so that it can be cached and cleared.
+      $render_array = [
+        '#markup' => '',
+      ];
+    }
+
+    return array_merge($render_array, $cache);
   }
 
   /**
@@ -120,7 +161,12 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
     $theme_initializer = \Drupal::service('theme.initialization');
     $this->theme_manager->setActiveTheme($theme_initializer->getActiveThemeByName($this->options['theme_report']));
     // Get all enabled blocks in this theme.
-    $enabled_blocks = $this->entityManager->getListBuilder('block')->load();
+    $all_blocks = $this->entityManager->getListBuilder('block')->load();
+
+    $enabled_blocks = array_filter($all_blocks, function($block) {
+      return $block->status();
+    });
+
     // Set the active theme back.
     $this->theme_manager->setActiveTheme($actual_current_theme);
 

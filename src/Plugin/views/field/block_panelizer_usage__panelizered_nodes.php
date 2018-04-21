@@ -6,8 +6,6 @@ use Drupal\Core\Form\FormStateInterface;
 use Drupal\views\Plugin\views\field\FieldPluginBase;
 use Drupal\views\ResultRow;
 use Drupal\Core\Link;
-use Drupal\views\Plugin\views\display\DisplayPluginBase;
-use Drupal\views\ViewExecutable;
 
 /**
  * A handler to provide a custom field to be used in listing of custom blocks.
@@ -21,6 +19,9 @@ use Drupal\views\ViewExecutable;
 class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
 
   public $panelizered_nids;
+  public $panelizer;
+  public $renderer;
+
   /**
    * {@inheritdoc}
    */
@@ -28,15 +29,7 @@ class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
     parent::__construct($configuration, $plugin_id, $plugin_definition);
     $this->panelizer = \Drupal::service('panelizer');
     $this->panelizered_nids = $this->getPanelizeredNidsByBlockUuid();
-  }
-
-  /**
-   * {@inheritdoc}
-   */
-  public function init(ViewExecutable $view, DisplayPluginBase $display, array &$options = NULL) {
-    parent::init($view, $display, $options);
-    // Set cache tags for this view. See @block_panelizer_usage_entity_presave().
-    $view->element['#cache']['tags'][] = BLOCK_PANELIZER_USAGE_CACHE_TAG_PANELIZERED_NODES;
+    $this->renderer = \Drupal::service('renderer');
   }
 
   /**
@@ -77,16 +70,31 @@ class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
     $plugin_uuid = $values->_entity->get('uuid')->getString();
 
     if (!empty($this->panelizered_nids[$plugin_uuid])) {
-      $report_links = [];
       foreach ($this->panelizered_nids[$plugin_uuid] as $nid => $title) {
         $link_render = Link::createFromRoute($title, 'entity.node.canonical', ['node' => $nid])->toRenderable();
-        $report_links[] = render($link_render);
+        $report[] = $this->renderer->renderPlain($link_render);
       }
-
-      return ['#markup' => implode(', ', $report_links)];
     }
 
-    return '';
+    // Cache by custom tag.
+    $cache = ['#cache' => ['tags' => [BLOCK_PANELIZER_USAGE_CACHE_TAG_PANELIZERED_NODES]]];
+
+    if (!empty($report)) {
+      $render_array = [
+        '#theme' => 'item_list',
+        '#items' => $report,
+      ];
+    }
+
+    else {
+      // This is so field is properly hidden if empty. [] in item_list did not.
+      // Empty markup must be returned so that it can be cached and cleared.
+      $render_array = [
+        '#markup' => '',
+      ];
+    }
+
+    return array_merge($render_array, $cache);
   }
 
   /**

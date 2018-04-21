@@ -8,8 +8,6 @@ use Drupal\views\ResultRow;
 use Drupal\Core\Entity\Display\EntityViewDisplayInterface;
 use Drupal\Core\Entity\Entity\EntityViewDisplay;
 use Drupal\Core\Link;
-use Drupal\views\Plugin\views\display\DisplayPluginBase;
-use Drupal\views\ViewExecutable;
 
 /**
  * A handler to provide a custom field to be used in listing of custom blocks.
@@ -25,6 +23,9 @@ class block_panelizer_usage__default_view_modes extends FieldPluginBase {
 
   public $panelizered_displays_by_block = [];
   private $bundle_info;
+  public $entityManager;
+  public $panelizer;
+  public $configFactory;
 
   /**
    * {@inheritdoc}
@@ -35,16 +36,9 @@ class block_panelizer_usage__default_view_modes extends FieldPluginBase {
     $this->panelizer = \Drupal::service('panelizer');
     $this->configFactory = \Drupal::service('config.factory');
     $this->bundle_info = $this->entityManager->getAllBundleInfo();
+    $this->renderer = \Drupal::service('renderer');
+    // Set the panelizered displays.
     $this->buildPanelizeredDisplaysByBlock();
-  }
-
-  /**
-   * {@inheritdoc}
-   */
-  public function init(ViewExecutable $view, DisplayPluginBase $display, array &$options = NULL) {
-    parent::init($view, $display, $options);
-    // Set cache tags for this view. See @block_panelizer_usage_entity_presave().
-    $view->element['#cache']['tags'][] = BLOCK_PANELIZER_USAGE_CACHE_TAG_VIEW_MODES;
   }
 
   /**
@@ -85,8 +79,28 @@ class block_panelizer_usage__default_view_modes extends FieldPluginBase {
     $plugin_uuid = $values->_entity->get('uuid')->getString();
 
     if (!empty($this->panelizered_displays_by_block[$plugin_uuid])) {
-      return ['#markup' => implode(', ', $this->panelizered_displays_by_block[$plugin_uuid])];
+      $report = $this->panelizered_displays_by_block[$plugin_uuid];
     }
+
+    // Cache by custom tag.
+    $cache = ['#cache' => ['tags' => [BLOCK_PANELIZER_USAGE_CACHE_TAG_VIEW_MODES]]];
+
+    if (!empty($report)) {
+      $render_array = [
+        '#theme' => 'item_list',
+        '#items' => $report,
+      ];
+    }
+
+    else {
+      // This is so field is properly hidden if empty. [] in item_list did not.
+      // Empty markup must be returned so that it can be cached and cleared.
+      $render_array = [
+        '#markup' => '',
+      ];
+    }
+
+    return array_merge($render_array, $cache);
   }
 
   /**
@@ -156,7 +170,7 @@ class block_panelizer_usage__default_view_modes extends FieldPluginBase {
       ['machine_name' => $route_machine_name,
         'step' => 'content']
     )->toRenderable();
-    $link_html = render($link_render);
+    $link_html = $this->renderer->renderPlain($link_render);
 
     // Get the block uuid to serve as index.
     $block_uuid_array = explode(':', $block['id']);
