@@ -8,8 +8,6 @@ use Drupal\views\ResultRow;
 use Drupal\Core\Entity\Display\EntityViewDisplayInterface;
 use Drupal\Core\Entity\Entity\EntityViewDisplay;
 use Drupal\Core\Link;
-use Drupal\views\Plugin\views\display\DisplayPluginBase;
-use Drupal\views\ViewExecutable;
 
 /**
  * A handler to provide a custom field to be used in listing of custom blocks.
@@ -25,6 +23,9 @@ class block_panelizer_usage__default_view_modes extends FieldPluginBase {
 
   public $panelizered_displays_by_block = [];
   private $bundle_info;
+  public $entityManager;
+  public $panelizer;
+  public $configFactory;
 
   /**
    * {@inheritdoc}
@@ -35,6 +36,8 @@ class block_panelizer_usage__default_view_modes extends FieldPluginBase {
     $this->panelizer = \Drupal::service('panelizer');
     $this->configFactory = \Drupal::service('config.factory');
     $this->bundle_info = $this->entityManager->getAllBundleInfo();
+    $this->renderer = \Drupal::service('renderer');
+    // Set the panelizered displays.
     $this->buildPanelizeredDisplaysByBlock();
   }
 
@@ -167,7 +170,7 @@ class block_panelizer_usage__default_view_modes extends FieldPluginBase {
       ['machine_name' => $route_machine_name,
         'step' => 'content']
     )->toRenderable();
-    $link_html = render($link_render);
+    $link_html = $this->renderer->renderPlain($link_render);
 
     // Get the block uuid to serve as index.
     $block_uuid_array = explode(':', $block['id']);

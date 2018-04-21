@@ -19,7 +19,12 @@ use Drupal\views\ViewExecutable;
  */
 class block_panelizer_usage__block_regions extends FieldPluginBase {
 
+  public $entityManager;
+  public $theme_manager;
+  public $theme_handler;
+  public $renderer;
   public $regions;
+
   /**
    * {@inheritdoc}
    */
@@ -28,6 +33,7 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
     $this->entityManager = \Drupal::service('entity.manager');
     $this->theme_manager = \Drupal::service('theme.manager');
     $this->theme_handler = \Drupal::service('theme_handler');
+    $this->renderer = \Drupal::service('renderer');
   }
 
   /**
@@ -105,7 +111,7 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
         $region_name = $this->regions[$block->getRegion()]->__toString();
         if ($this->options['display_as_link']) {
           $link_render = Link::createFromRoute($region_name, 'block.admin_display_theme', ['theme' => $this->options['theme_report']])->toRenderable();
-          $report[] = render($link_render);
+          $report[] = $this->renderer->renderPlain($link_render);
         }
         else {
           $report[] = $region_name;

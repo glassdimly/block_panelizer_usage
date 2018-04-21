@@ -6,8 +6,6 @@ use Drupal\Core\Form\FormStateInterface;
 use Drupal\views\Plugin\views\field\FieldPluginBase;
 use Drupal\views\ResultRow;
 use Drupal\Core\Link;
-use Drupal\views\Plugin\views\display\DisplayPluginBase;
-use Drupal\views\ViewExecutable;
 
 /**
  * A handler to provide a custom field to be used in listing of custom blocks.
@@ -21,6 +19,9 @@ use Drupal\views\ViewExecutable;
 class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
 
   public $panelizered_nids;
+  public $panelizer;
+  public $renderer;
+
   /**
    * {@inheritdoc}
    */
@@ -28,6 +29,7 @@ class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
     parent::__construct($configuration, $plugin_id, $plugin_definition);
     $this->panelizer = \Drupal::service('panelizer');
     $this->panelizered_nids = $this->getPanelizeredNidsByBlockUuid();
+    $this->renderer = \Drupal::service('renderer');
   }
 
   /**
@@ -70,7 +72,7 @@ class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
     if (!empty($this->panelizered_nids[$plugin_uuid])) {
       foreach ($this->panelizered_nids[$plugin_uuid] as $nid => $title) {
         $link_render = Link::createFromRoute($title, 'entity.node.canonical', ['node' => $nid])->toRenderable();
-        $report[] = render($link_render);
+        $report[] = $this->renderer->renderPlain($link_render);
       }
     }
 
