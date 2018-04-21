@@ -75,15 +75,29 @@ class block_panelizer_usage__default_view_modes extends FieldPluginBase {
   public function render(ResultRow $values) {
     $plugin_uuid = $values->_entity->get('uuid')->getString();
 
-    $report = '';
     if (!empty($this->panelizered_displays_by_block[$plugin_uuid])) {
-      $report = implode(', ', $this->panelizered_displays_by_block[$plugin_uuid]);
+      $report = $this->panelizered_displays_by_block[$plugin_uuid];
     }
 
-    return [
-      '#markup' => $report,
-      '#cache' => ['tags' => [BLOCK_PANELIZER_USAGE_CACHE_TAG_VIEW_MODES]]
-    ];
+    // Cache by custom tag.
+    $cache = ['#cache' => ['tags' => [BLOCK_PANELIZER_USAGE_CACHE_TAG_VIEW_MODES]]];
+
+    if (!empty($report)) {
+      $render_array = [
+        '#theme' => 'item_list',
+        '#items' => $report,
+      ];
+    }
+
+    else {
+      // This is so field is properly hidden if empty. [] in item_list did not.
+      // Empty markup must be returned so that it can be cached and cleared.
+      $render_array = [
+        '#markup' => '',
+      ];
+    }
+
+    return array_merge($render_array, $cache);
   }
 
   /**

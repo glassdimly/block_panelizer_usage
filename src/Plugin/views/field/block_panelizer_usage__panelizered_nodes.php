@@ -67,21 +67,32 @@ class block_panelizer_usage__panelizered_nodes extends FieldPluginBase {
   public function render(ResultRow $values) {
     $plugin_uuid = $values->_entity->get('uuid')->getString();
 
-    $report = '';
     if (!empty($this->panelizered_nids[$plugin_uuid])) {
-      $report_links = [];
       foreach ($this->panelizered_nids[$plugin_uuid] as $nid => $title) {
         $link_render = Link::createFromRoute($title, 'entity.node.canonical', ['node' => $nid])->toRenderable();
-        $report_links[] = render($link_render);
+        $report[] = render($link_render);
       }
-
-      $report = implode(', ', $report_links);
     }
 
-    return [
-      '#markup' => $report,
-      '#cache' => ['tags' => [BLOCK_PANELIZER_USAGE_CACHE_TAG_PANELIZERED_NODES]]
-    ];
+    // Cache by custom tag.
+    $cache = ['#cache' => ['tags' => [BLOCK_PANELIZER_USAGE_CACHE_TAG_PANELIZERED_NODES]]];
+
+    if (!empty($report)) {
+      $render_array = [
+        '#theme' => 'item_list',
+        '#items' => $report,
+      ];
+    }
+
+    else {
+      // This is so field is properly hidden if empty. [] in item_list did not.
+      // Empty markup must be returned so that it can be cached and cleared.
+      $render_array = [
+        '#markup' => '',
+      ];
+    }
+
+    return array_merge($render_array, $cache);
   }
 
   /**

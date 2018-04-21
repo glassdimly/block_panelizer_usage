@@ -82,6 +82,7 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
       '#default_value' => $this->options['theme_report'],
       '#options' => ['' => ''] + $theme_checkboxes
     ];
+
     $form['display_as_link'] = [
       '#type' => 'checkbox',
       '#title' => t('Link to the Block layout page.'),
@@ -112,12 +113,32 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
       }
     }
 
-    $report = (!empty($report)) ? implode(', ', $report) : '';
-
-    return [
-      '#markup' => $report,
-      '#cache' => ['tags' => array_merge($values->_entity->getCacheTags(), $block->getCacheTags())]
+    // Cache by block ID and config ID.
+    $cache = [
+      '#cache' => [
+        'tags' => array_merge(
+          $values->_entity->getCacheTags(),
+          $block->getCacheTags()
+        )
+      ]
     ];
+
+    if (!empty($report)) {
+      $render_array = [
+        '#theme' => 'item_list',
+        '#items' => $report,
+      ];
+    }
+
+    else {
+      // This is so field is properly hidden if empty. [] in item_list did not.
+      // Empty markup must be returned so that it can be cached and cleared.
+      $render_array = [
+        '#markup' => '',
+      ];
+    }
+
+    return array_merge($render_array, $cache);
   }
 
   /**
@@ -132,7 +153,12 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
     $theme_initializer = \Drupal::service('theme.initialization');
     $this->theme_manager->setActiveTheme($theme_initializer->getActiveThemeByName($this->options['theme_report']));
     // Get all enabled blocks in this theme.
-    $enabled_blocks = $this->entityManager->getListBuilder('block')->load();
+    $all_blocks = $this->entityManager->getListBuilder('block')->load();
+
+    $enabled_blocks = array_filter($all_blocks, function($block) {
+      return $block->status();
+    });
+
     // Set the active theme back.
     $this->theme_manager->setActiveTheme($actual_current_theme);
 
