@@ -58,6 +58,7 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
   protected function defineOptions() {
     $options = parent::defineOptions();
     $options['theme_report'] = ['default' => ''];
+    $options['display_as_link'] = TRUE;
 
     return $options;
   }
@@ -81,6 +82,12 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
       '#default_value' => $this->options['theme_report'],
       '#options' => ['' => ''] + $theme_checkboxes
     ];
+    $form['display_as_link'] = [
+      '#type' => 'checkbox',
+      '#title' => t('Link to the Block layout page.'),
+      '#weight' => -31,
+      '#default_value' => $this->options['display_as_link'],
+    ];
   }
 
   /**
@@ -95,8 +102,13 @@ class block_panelizer_usage__block_regions extends FieldPluginBase {
       $this_plugin_uuid = end($this_plugin_uuid_array);
       if ($plugin_uuid == $this_plugin_uuid) {
         $region_name = $this->regions[$block->getRegion()]->__toString();
-        $link_render = Link::createFromRoute($region_name, 'block.admin_display_theme', ['theme' => $this->options['theme_report']])->toRenderable();
-        $report[] = render($link_render);
+        if ($this->options['display_as_link']) {
+          $link_render = Link::createFromRoute($region_name, 'block.admin_display_theme', ['theme' => $this->options['theme_report']])->toRenderable();
+          $report[] = render($link_render);
+        }
+        else {
+          $report[] = $region_name;
+        }
       }
     }
 
